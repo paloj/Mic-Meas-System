@@ -1,0 +1,4 @@
+test_mic_recordings/*
+recordings/*
+output/*
+__pycache__/*
