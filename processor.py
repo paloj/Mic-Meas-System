@@ -30,7 +30,7 @@ def compute_frequency_response(ir, fs):
     return freqs, magnitude_db
 
 
-def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000, reference_db=None, smoothing_bins=5):
+def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000, reference_db=None, smoothing_bins=5, anomaly_threshold_db=6):
     """
     Load 3 takes, compute average and smoothed frequency response, optionally normalize.
     """
@@ -38,7 +38,8 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
 
     sweep, _ = sf.read(sweep_path)
     responses = []
-    for i in range(1, 4):
+    anomalies = []
+    for i in range(1, 4):  # TODO: dynamically use `repeats`
         rec_path = os.path.join(folder, f"mic_take_{i}.wav")
         recorded, _ = sf.read(rec_path)
         signal = recorded[:, 0] if recorded.ndim > 1 else recorded
@@ -46,7 +47,14 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
         freqs, mag_db = compute_frequency_response(ir, fs)
         responses.append(mag_db)
 
+    responses = np.array(responses)
     avg_response = np.mean(responses, axis=0)
+    std_response = np.std(responses, axis=0)
+
+    # Anomaly detection: any response deviating more than threshold from mean
+    for i, r in enumerate(responses):
+        if np.any(np.abs(r - avg_response) > anomaly_threshold_db):
+            anomalies.append(i + 1)
     std_response = np.std(responses, axis=0)
 
     smoothed = smooth_response(avg_response, window_bins=smoothing_bins)
@@ -57,6 +65,8 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
         normalized = None
 
     print("[✓] Processed frequency response from 3 takes.")
+    if anomalies:
+        print(f"[!] Anomaly detected in take(s): {anomalies}")
     return freqs, smoothed, std_response, normalized
 
 
