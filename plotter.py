@@ -1,4 +1,3 @@
-
 #plotter.py
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,7 +19,11 @@ def plot_frequency_response(freqs, response_db, std_db=None, label="Mic", refere
         plt.plot(freqs, reference_db, '--', label="Reference")
         plt.plot(freqs, response_db - reference_db, label="Delta (Mic - Ref)")
 
+    from matplotlib.ticker import FixedLocator, FixedFormatter
+
     plt.xscale('log')
+    plt.gca().xaxis.set_major_locator(FixedLocator([20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]))
+    plt.gca().xaxis.set_major_formatter(FixedFormatter(["20", "50", "100", "200", "500", "1k", "2k", "5k", "10k", "20k"]))
     plt.xlim(20, 20000)
     plt.ylim(-60, 10)
     plt.xlabel("Frequency (Hz)")
