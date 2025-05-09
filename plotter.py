@@ -1,10 +1,10 @@
+
 #plotter.py
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 
 
-from utils import smooth_response
 
 def plot_frequency_response(freqs, response_db, std_db=None, label="Mic", reference_db=None, save_path=None):
     """

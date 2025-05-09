@@ -1,3 +1,4 @@
+
 # device_interface.py
 import sounddevice as sd
 import numpy as np
@@ -35,7 +36,7 @@ def list_devices_by_hostapi(hostapi_index, prompt="Select device:"):
     """
     Filter input/output devices if ASIO not found. Lists only valid choices.
     """
-    print("[⚠] ASIO host API not available. Filtering based on channel type.")
+    print(f"[🎚] Listing {prompt.lower()} options...")
     devices = sd.query_devices()
     if "input" in prompt.lower():
         filtered = [(i, d) for i, d in enumerate(devices) if d["max_input_channels"] > 0]
@@ -75,3 +76,4 @@ def extract_mono_channel(stereo_input, channel_index):
         return stereo_input[:, channel_index:channel_index+1]
     else:
         return stereo_input[:, [0]]  # fallback to first
+

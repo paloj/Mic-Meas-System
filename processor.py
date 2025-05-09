@@ -1,3 +1,5 @@
+
+#processor.py
 import numpy as np
 import soundfile as sf
 from scipy.signal import fftconvolve
@@ -22,7 +24,8 @@ def compute_frequency_response(ir, fs):
     Returns frequency bins and dB magnitude.
     """
     N = len(ir)
-    windowed = ir[:fs] * np.hanning(fs)  # Window 1 second
+    N = min(len(ir), fs)
+    windowed = ir[:N] * np.hanning(N)  # Window 1 second
     spectrum = np.abs(rfft(windowed))
     spectrum[spectrum == 0] = 1e-12
     magnitude_db = 20 * np.log10(spectrum)
@@ -39,8 +42,10 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
     sweep, _ = sf.read(sweep_path)
     responses = []
     anomalies = []
-    for i in range(1, 4):  # TODO: dynamically use `repeats`
-        rec_path = os.path.join(folder, f"mic_take_{i}.wav")
+    import glob
+
+    mic_files = sorted(glob.glob(os.path.join(folder, "mic_take_*.wav")))
+    for i, rec_path in enumerate(mic_files, 1):
         recorded, _ = sf.read(rec_path)
         signal = recorded[:, 0] if recorded.ndim > 1 else recorded
         ir = deconvolve(signal, sweep)
@@ -49,8 +54,6 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
 
     responses = np.array(responses)
     avg_response = np.mean(responses, axis=0)
-    std_response = np.std(responses, axis=0)
-
     # Anomaly detection: any response deviating more than threshold from mean
     for i, r in enumerate(responses):
         if np.any(np.abs(r - avg_response) > anomaly_threshold_db):
@@ -71,5 +74,5 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
 
 
 if __name__ == "__main__":
-    freqs, avg_db, std_db = process_mic_recordings("test_mic_recordings")
+    freqs, avg_db, std_db, _ = process_mic_recordings("test_mic_recordings")
     print(f"Frequencies: {freqs.shape}, Response: {avg_db.shape}")

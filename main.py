@@ -1,5 +1,8 @@
 # main.py
 import os
+import threading
+import sys
+import keyboard
 from datetime import datetime
 import json
 import configparser
@@ -8,18 +11,18 @@ from sweep_generator import generate_log_sweep, generate_white_noise, generate_p
 from recorder import record_mic_response
 from processor import process_mic_recordings
 from plotter import plot_frequency_response
-from device_interface import select_device, list_devices_by_hostapi
+from device_interface import list_devices_by_hostapi
 
 
 def menu():
+    n = None  # default sweep count for metadata
     config_path = "settings.ini"
     config = configparser.ConfigParser()
     config.read(config_path)
 
     if "audio" not in config:
         config["audio"] = {}
-    if "sweep" not in config:
-        config["sweep"] = {}
+    
 
     hostapis = sd.query_hostapis()
     asio_index = next((i for i, api in enumerate(hostapis) if "ASIO" in api['name'].upper()), None)
@@ -134,7 +137,7 @@ def menu():
                 "output_folder": out_folder,
                 "sweep_file": "test_signals/sweep.wav",
                 "sample_rate": 48000,
-                "num_sweeps": n
+                "num_sweeps": n if n is not None else "N/A"
             }
             with open(meta_path, "w") as f:
                 json.dump(metadata, f, indent=2)
@@ -151,4 +154,6 @@ def menu():
 
 if __name__ == "__main__":
     menu()
-    print("[✓] Mic Measurement System")
+
+    print("[✓] Mic Measurement System exited.")
+    sys.exit(0)

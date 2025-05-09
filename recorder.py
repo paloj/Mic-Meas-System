@@ -1,6 +1,6 @@
+
 # recorder.py
 import threading
-import keyboard
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
@@ -38,10 +38,15 @@ def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=4
     stop_requested = threading.Event()
 
     def listen_for_quit():
-        print("[↩] Press 'q' to stop recording...")
-        keyboard.wait('q')
-        stop_requested.set()
-        print("[✋] Quit signal received. Stopping immediately.")
+        print("[↩] Press 'q' + Enter to stop recording...")
+        while not stop_requested.is_set():
+            try:
+                if input().strip().lower() == 'q':
+                    stop_requested.set()
+                    print("[✋] Quit signal received. Stopping immediately.")
+                    break
+            except EOFError:
+                pass
 
     quit_thread = threading.Thread(target=listen_for_quit, daemon=True)
     quit_thread.start()
