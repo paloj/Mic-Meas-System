@@ -1,4 +1,3 @@
-
 #processor.py
 import numpy as np
 import soundfile as sf
@@ -33,7 +32,7 @@ def compute_frequency_response(ir, fs):
     return freqs, magnitude_db
 
 
-def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000, reference_db=None, smoothing_bins=5, anomaly_threshold_db=6):
+def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000, reference_db=None, smoothing_bins=5, anomaly_threshold_db=6, return_anomalies=False):
     """
     Load 3 takes, compute average and smoothed frequency response, optionally normalize.
     """
@@ -70,6 +69,8 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
     print("[✓] Processed frequency response from 3 takes.")
     if anomalies:
         print(f"[!] Anomaly detected in take(s): {anomalies}")
+    if return_anomalies:
+        return freqs, smoothed, std_response, normalized, anomalies
     return freqs, smoothed, std_response, normalized
 
 

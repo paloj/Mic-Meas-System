@@ -1,4 +1,3 @@
-
 # recorder.py
 import threading
 import sounddevice as sd
@@ -108,4 +107,5 @@ def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=4
         print(f"[✓] Saved: {output_path}")
 
     print("[✓] Recording completed.")
-    quit_thread.join()
+    if stop_requested.is_set():
+        quit_thread.join()
