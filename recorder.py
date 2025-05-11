@@ -1,15 +1,42 @@
 # recorder.py
-import threading
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
 import os
 from device_interface import apply_output_panning, extract_mono_channel
+from utils import smooth_response, normalize_response
+
+def record_noise_samples(path, input_device, output_device, input_mode, output_mode):
+    print("[🎧] Playing and recording white noise (5s, flush=True)...")
+    record_mic_response(
+        output_folder=path,
+        sweep_path="test_signals/white_noise.wav",
+        fs=48000,
+        input_device=input_device,
+        output_device=output_device,
+        input_channel_mode=input_mode,
+        output_channel_mode=output_mode,
+        repeats=1,
+        output_filename="white_noise.wav"
+    )
+
+    print("[🎧] Playing and recording pink noise (5s)...")
+    record_mic_response(
+        output_folder=path,
+        sweep_path="test_signals/pink_noise.wav",
+        fs=48000,
+        input_device=input_device,
+        output_device=output_device,
+        input_channel_mode=input_mode,
+        output_channel_mode=output_mode,
+        repeats=1,
+        output_filename="pink_noise.wav"
+    )
 
 def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=48000,
                          input_device=None, output_device=None,
                          input_channel_mode="left", output_channel_mode="left",
-                         repeats=3):
+                         repeats=3, output_filename=None, output_filename_prefix=None):
     # Check for incompatible device host APIs
     in_info = sd.query_devices(input_device)
     out_info = sd.query_devices(output_device)
@@ -34,25 +61,8 @@ def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=4
     if sweep_fs != fs:
         raise ValueError("Sweep sample rate does not match recording sample rate")
 
-    stop_requested = threading.Event()
-
-    def listen_for_quit():
-        print("[↩] Press 'q' + Enter to stop recording...")
-        while not stop_requested.is_set():
-            try:
-                if input().strip().lower() == 'q':
-                    stop_requested.set()
-                    print("[✋] Quit signal received. Stopping immediately.")
-                    break
-            except EOFError:
-                pass
-
-    quit_thread = threading.Thread(target=listen_for_quit, daemon=True)
-    quit_thread.start()
-
+    # Play sweep and record
     for i in range(repeats):
-        if stop_requested.is_set():
-            break
         print(f"[•] Playing sweep and recording take {i+1}/{repeats}...")
 
         recording = np.zeros((len(sweep), 2), dtype=np.float32)
@@ -90,7 +100,7 @@ def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=4
                        channels=(2, 2),  # 2 in, 2 out (stereo)
                        device=(input_device, output_device),
                        callback=callback):
-            while not stop_requested.is_set():
+            while True:
                 sd.sleep(50)
                 if cursor[0] >= len(stereo_sweep):
                     break
@@ -102,10 +112,15 @@ def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=4
         else:
             mono = recording  # stereo
 
-        output_path = os.path.join(output_folder, f"mic_take_{i+1}.wav")
+        if output_filename:
+            output_path = os.path.join(output_folder, output_filename)
+        elif output_filename_prefix:
+            output_path = os.path.join(output_folder, f"{output_filename_prefix}{i+1}.wav")
+        else:
+            output_path = os.path.join(output_folder, f"mic_take_{i+1}.wav")
+
         sf.write(output_path, mono, fs)
         print(f"[✓] Saved: {output_path}")
 
     print("[✓] Recording completed.")
-    if stop_requested.is_set():
-        quit_thread.join()
+ 

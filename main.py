@@ -7,66 +7,25 @@ from datetime import datetime
 import json
 import configparser
 import sounddevice as sd
-from sweep_generator import generate_log_sweep, generate_white_noise, generate_pink_noise
-from recorder import record_mic_response
-from processor import process_mic_recordings
+from sweep_generator import generate_log_sweep, generate_white_noise, generate_pink_noise, generate_silence
+from recorder import record_mic_response, record_noise_samples
+from processor import process_mic_recordings, detect_anomalies
 from plotter import plot_frequency_response
 from device_interface import list_devices_by_hostapi
 
+def get_saved_or_prompt_device(key, prompt, config, asio_index):
+    try:
+        saved = int(config["audio"].get(key, ""))
+        name = sd.query_devices(saved)["name"]
+        print(f"[ℹ] Using saved {prompt.lower()} ({saved}): {name}")
+        return saved
+    except:
+        print(f"[?] Listing devices from host API #{asio_index}...")
+        idx = list_devices_by_hostapi(asio_index, prompt=prompt)
+        config["audio"][key] = str(idx)
+        return idx
 
-def handle_anomaly_detection(name, path, anomaly_threshold_db):
-    from processor import process_mic_recordings as check_anomalies, compute_frequency_response, deconvolve
-    from plotter import plot_frequency_response
-    from utils import smooth_response
-    import matplotlib.pyplot as plt
-    import soundfile as sf
-    import glob
-    import os
-    import shutil
-    import time
-
-    freqs, smoothed, std, _, anomalies = check_anomalies(path, return_anomalies=True, anomaly_threshold_db=anomaly_threshold_db)
-    if anomalies:
-        anomaly_plot = os.path.join("output", f"{name}_anomaly_debug.png")
-        sweep, _ = sf.read("test_signals/sweep.wav")
-        takes = sorted(glob.glob(os.path.join(path, "mic_take_*.wav")))
-        plt.figure(figsize=(10, 6))
-        for take in takes:
-            signal, _ = sf.read(take)
-            ir = deconvolve(signal[:, 0] if signal.ndim > 1 else signal, sweep)
-            f, r = compute_frequency_response(ir, fs=48000)
-            sm = smooth_response(r)
-            plt.plot(f, sm, label=os.path.basename(take))
-        plt.xscale("log")
-        plt.ylim(-60, 20)
-        plt.grid(True, which="both", linestyle=":", linewidth=0.5)
-        plt.title(f"{name} - Anomaly Takes")
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Magnitude (dB)")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(anomaly_plot, dpi=300)
-        print(f"[📉] Saved anomaly debug plot to {anomaly_plot}")
-
-        retry = input(f"[!] Anomaly detected in take(s): {anomalies}Retry recording? (y/N): ").strip().lower()
-        if retry == "y":
-            for file in glob.glob(os.path.join(path, "mic_take_*.wav")) + \
-                        glob.glob(os.path.join("output", f"{name}_*", "*.png")) + \
-                        glob.glob(os.path.join("output", f"{name}_*", "*.csv")) + \
-                        glob.glob(os.path.join("output", f"{name}_*", "*.json")):
-                try:
-                    os.remove(file)
-                except Exception as e:
-                    print(f"[!] Failed to delete {file}: {e}")
-            for folder in glob.glob(os.path.join("output", f"{name}_*")):
-                try:
-                    shutil.rmtree(folder)
-                except Exception as e:
-                    print(f"[!] Failed to remove folder {folder}: {e}")
-            time.sleep(0.5)
-            return True
-    return False
-
+# MAIN MENU
 def menu():
     config_path = "settings.ini"
     config = configparser.ConfigParser()
@@ -91,114 +50,37 @@ def menu():
         print("[⚠] ASIO backend not found. Using system default.")
         config["audio"]["backend"] = "WASAPI"
 
-    def get_saved_or_prompt_device(key, prompt):
-        try:
-            saved = int(config["audio"].get(key, ""))
-            name = sd.query_devices(saved)["name"]
-            print(f"[ℹ] Using saved {prompt.lower()} ({saved}): {name}")
-            return saved
-        except:
-            print(f"[?] Listing devices from host API #{asio_index}...")
-            idx = list_devices_by_hostapi(asio_index, prompt=prompt)
-            config["audio"][key] = str(idx)
-            return idx
-
     while True:
-        print("🎤 Mic Measurement System")
-        print("1. Record new mic")
-        print("2. Record reference mic")
-        print("3. Generate test signals")
-        print("4. Process and plot mic response")
-        print("5. Exit")
-        choice = input("Select option: ")
-        
+        choice = input(f" \
+            🎤 Mic Measurement System\n \
+            1. Record new mic\n \
+            2. Record reference mic\n \
+            3. Generate test signals\n \
+            4. Process and plot mic response\n \
+            5. Exit\n \
+            Select option: ")        
 
         if choice == "1":
             if not os.path.exists("test_signals/sweep.wav"):
                 print("[!] Sweep file missing. Please generate test signals first.")
                 continue
-
             name = input("Enter mic name: ").strip()
-            path = os.path.join("recordings", name)
-            input_device = get_saved_or_prompt_device("input_device", "Select input device")
-            output_device = get_saved_or_prompt_device("output_device", "Select output device")
-
-            input_mode = input("Input channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
-            output_mode = input("Output channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
-            count = input("Number of sweeps [3]: ").strip()
-            try:
-                n = int(count)
-            except:
-                n = 3
-
-            record_mic_response(path,
-                                input_device=input_device,
-                                output_device=output_device,
-                                input_channel_mode=input_mode,
-                                output_channel_mode=output_mode,
-                                repeats=n)
-
-            # Record 5s of white and pink noise via playback and recording
-            from recorder import record_mic_response
-            print("[🎧] Playing and recording white noise (5s)...")
-            record_mic_response(
-                output_folder=path,
-                sweep_path="test_signals/white_noise.wav",
-                fs=48000,
-                input_device=input_device,
-                output_device=output_device,
-                input_channel_mode=input_mode,
-                output_channel_mode=output_mode,
-                repeats=1
-            )
-            os.rename(os.path.join(path, "mic_take_1.wav"), os.path.join(path, "white_noise.wav"))
-
-            print("[🎧] Playing and recording pink noise (5s)...")
-            record_mic_response(
-                output_folder=path,
-                sweep_path="test_signals/pink_noise.wav",
-                fs=48000,
-                input_device=input_device,
-                output_device=output_device,
-                input_channel_mode=input_mode,
-                output_channel_mode=output_mode,
-                repeats=1
-            )
-            os.rename(os.path.join(path, "mic_take_1.wav"), os.path.join(path, "pink_noise.wav"))
-
-            if handle_anomaly_detection(name, path, anomaly_threshold_db):
-                continue
-
+            record_mic(name, is_reference=False, config=config, asio_index=asio_index, anomaly_threshold_db=anomaly_threshold_db)
+        
         elif choice == "2":
             if not os.path.exists("test_signals/sweep.wav"):
                 print("[!] Sweep file missing. Please generate test signals first.")
                 continue
-
             name = input("Enter mic name: ").strip()
-            path = os.path.join("recordings", f"ref_{name}" if choice == "2" else name)
-            input_device = get_saved_or_prompt_device("input_device", "Select input device")
-            output_device = get_saved_or_prompt_device("output_device", "Select output device")
+            record_mic(name, is_reference=True, config=config, asio_index=asio_index, anomaly_threshold_db=anomaly_threshold_db)
 
-            input_mode = input("Input channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
-            output_mode = input("Output channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
-            count = input("Number of sweeps [3]: ").strip()
-            try:
-                n = int(count)
-            except:
-                n = 3
-
-            record_mic_response(path,
-                                input_device=input_device,
-                                output_device=output_device,
-                                input_channel_mode=input_mode,
-                                output_channel_mode=output_mode,
-                                repeats=n)
-
+          
         elif choice == "3":
             os.makedirs("test_signals", exist_ok=True)
             generate_log_sweep("test_signals/sweep.wav")
             generate_white_noise("test_signals/white_noise.wav")
             generate_pink_noise("test_signals/pink_noise.wav")
+            generate_silence("test_signals/silence.wav")
 
             # Also record 5s of white and pink noise for future use
             from time import sleep
@@ -276,22 +158,54 @@ def menu():
                 print(f"[✓] Saved normalized CSV to {norm_csv_path}")
 
             meta_path = os.path.join(out_folder, "metadata.json")
+            input_device = get_saved_or_prompt_device("input_device", "Select input device", config, asio_index)
+            output_device = get_saved_or_prompt_device("output_device", "Select output device", config, asio_index)
+
+            input_mode = "left"  # Default input channel mode
+            output_mode = "left"  # Default output channel mode
             metadata = {
+                "version": "v0.9-beta",
                 "mic_name": name,
                 "timestamp": timestamp,
                 "reference_mic": ref_name if ref_name else None,
                 "output_folder": out_folder,
                 "sweep_file": "test_signals/sweep.wav",
                 "sample_rate": 48000,
-                "num_sweeps": n if n is not None else "N/A"
+                "num_sweeps": n if n is not None else "N/A",
+                "input_device": sd.query_devices(input_device)["name"] if input_device is not None else None,
+                "output_device": sd.query_devices(output_device)["name"] if output_device is not None else None,
+                "input_channel_mode": input_mode,
+                "output_channel_mode": output_mode
             }
+
+            # Optional: Process short sweep response
+            short_pattern = os.path.join(test_path, "short_take_*.wav")
+            import glob
+            if glob.glob(short_pattern):
+                freqs_short, smoothed_short, std_short, _ = process_mic_recordings(test_path,
+                                                    sweep_path="test_signals/sweep_short.wav",
+                                                    anomaly_threshold_db=anomaly_threshold_db,
+                                                    smoothing_bins=5)
+                short_plot_path = os.path.join(out_folder, "response_short.png")
+                plot_frequency_response(freqs_short, smoothed_short, std_db=std_short, label=f"{name} (short)",
+                                        save_path=short_plot_path)
+
+                short_csv_path = os.path.join(out_folder, "response_short.csv")
+                with open(short_csv_path, "w") as f:
+                    f.write("Frequency (Hz);Smoothed Response (dB);Std Dev (dB)")
+                    for f_hz, db_val, std_val in zip(freqs_short, smoothed_short, std_short):
+                        f.write(f"{f_hz:.2f};{db_val:.2f};{std_val:.2f}")
+                print(f"[✓] Saved short sweep CSV to {short_csv_path}")
+
+
+                
             with open(meta_path, "w") as f:
                 json.dump(metadata, f, indent=2)
             print(f"[✓] Saved metadata to {meta_path}")
 
             # Log to run history
             with open("run_history.log", "a") as log:
-                log.write(f"{timestamp} | Test: {name} | Reference: {ref_name} | Output: {out_folder}")
+                log.write(f"{timestamp} | Test: {name} | Reference: {ref_name} | Output: {out_folder} | Version: v0.9-beta")
             config["audio"]["last_test_mic"] = name
             config["audio"]["last_ref_mic"] = ref_name
 
@@ -305,10 +219,65 @@ def menu():
         config.write(f)
 
 
+def record_mic(name, is_reference=False, config=None, asio_index=None, anomaly_threshold_db=6):
+    prefix = "ref_" if is_reference else ""
+    path = os.path.join("recordings", f"{prefix}{name}")
+    input_device = get_saved_or_prompt_device("input_device", "Select input device", config, asio_index)
+    output_device = get_saved_or_prompt_device("output_device", "Select output device", config, asio_index)
+
+    input_mode = input("Input channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
+    output_mode = input("Output channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
+    count = input("Number of sweeps [3]: ").strip()
+    try:
+        n = int(count)
+    except:
+        n = 3
+
+    # Record ambient noise
+    record_mic_response(path,
+                        sweep_path="test_signals/silence.wav",
+                        input_device=input_device,
+                        output_device=output_device,
+                        input_channel_mode=input_mode,
+                        output_channel_mode=output_mode,
+                        repeats=1,
+                        output_filename="ambient_noise.wav")
+
+    # Full sweeps
+    while True:
+        record_mic_response(path,
+                            input_device=input_device,
+                            output_device=output_device,
+                            input_channel_mode=input_mode,
+                            output_channel_mode=output_mode,
+                            repeats=n)
+        anomalies_detected = detect_anomalies(name, path, anomaly_threshold_db)
+        if not anomalies_detected:
+            break
+
+    # Short sweeps
+    while True:
+        record_mic_response(path,
+                            sweep_path="test_signals/sweep_short.wav",
+                            input_device=input_device,
+                            output_device=output_device,
+                            input_channel_mode=input_mode,
+                            output_channel_mode=output_mode,
+                            repeats=n,
+                            output_filename_prefix="short_take_")
+        anomalies_detected = detect_anomalies(name + "_short", path, anomaly_threshold_db,
+                                              pattern="short_take_*.wav", sweep_path="test_signals/sweep_short.wav")
+        if not anomalies_detected:
+            break
+
+    # White and pink noise
+    record_noise_samples(path, input_device, output_device, input_mode, output_mode)
+    print("[✓] Recording completed.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         print("[TEST] Running system tests...")
         # Add test functions here
     else:
         menu()
-

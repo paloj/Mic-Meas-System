@@ -38,9 +38,14 @@ def generate_pink_noise(filename="pink_noise.wav", duration=10.0, fs=48000):
     sf.write(filename, pink, fs)
     print(f"[✓] Pink noise saved as {filename}")
 
+def generate_silence(filename, duration=3.0, samplerate=48000):
+    silence = np.zeros(int(duration * samplerate), dtype=np.float32)
+    sf.write(filename, silence, samplerate)
+  
 
 if __name__ == "__main__":
     os.makedirs("test_signals", exist_ok=True)
     generate_log_sweep("test_signals/sweep.wav")
     generate_white_noise("test_signals/white_noise.wav")
     generate_pink_noise("test_signals/pink_noise.wav")
+    generate_silence("test_signals/silence.wav")

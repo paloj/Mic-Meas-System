@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-
-
 def plot_frequency_response(freqs, response_db, std_db=None, label="Mic", reference_db=None, save_path=None):
     """
     Plot and optionally save frequency response graph.
@@ -29,7 +27,8 @@ def plot_frequency_response(freqs, response_db, std_db=None, label="Mic", refere
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Magnitude (dB)")
     plt.title("Frequency Response")
-    plt.grid(True, which="both", ls="--")
+    plt.grid(True, which="major", ls="--", linewidth=0.6)
+    plt.grid(True, which="minor", ls=":", linewidth=0.4)
     plt.legend()
 
     if save_path:
