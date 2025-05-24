@@ -36,7 +36,7 @@ def record_noise_samples(path, input_device, output_device, input_mode, output_m
 def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=48000,
                          input_device=None, output_device=None,
                          input_channel_mode="left", output_channel_mode="left",
-                         repeats=3, output_filename=None, output_filename_prefix=None):
+                         repeats=3, output_filename=None, output_filename_prefix=None, volume=0.1):
     # Check for incompatible device host APIs
     in_info = sd.query_devices(input_device)
     out_info = sd.query_devices(output_device)
@@ -49,7 +49,46 @@ def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=4
     os.makedirs(output_folder, exist_ok=True)
     sweep, sweep_fs = sf.read(sweep_path)
 
-    sweep *= 0.8  # default volume if not overridden externally
+    # Read default volume from configuration or set to 0.1
+    if not isinstance(sweep, np.ndarray):
+        raise ValueError(f"Invalid sweep data: expected ndarray, got {type(sweep)}")
+    if sweep.ndim > 1:
+        if sweep.shape[1] > 2:
+            raise ValueError("Sweep data has more than 2 channels, expected mono or stereo.")
+        sweep = sweep[:, 0]
+    if sweep.size == 0:
+        raise ValueError("Sweep data is empty, please check the file.")
+    if sweep_fs != fs:
+        raise ValueError(f"Sweep sample rate {sweep_fs} does not match expected {fs}")
+    if not np.issubdtype(sweep.dtype, np.floating):
+        raise ValueError(f"Sweep data type {sweep.dtype} is not floating point, expected float32 or float64.")
+    if np.max(np.abs(sweep)) > 1.0:
+        print("[!] Warning: Sweep data exceeds -1 to 1 range, normalizing to prevent clipping.")
+        sweep /= np.max(np.abs(sweep))
+    if input_channel_mode not in ["left", "right", "stereo"]:
+        raise ValueError(f"Invalid input channel mode: {input_channel_mode}. Must be 'left', 'right', or 'stereo'.")
+    if output_channel_mode not in ["left", "right", "center"]:
+        raise ValueError(f"Invalid output channel mode: {output_channel_mode}. Must be 'left', 'right', or 'center'.")
+    if repeats < 1:
+        raise ValueError(f"Invalid number of repeats: {repeats}. Must be at least 1.")
+    if not output_folder:
+        raise ValueError("Output folder must be specified.")
+    if not os.path.exists(output_folder):
+        raise ValueError(f"Output folder does not exist: {output_folder}")
+    if not os.path.isdir(output_folder):
+        raise ValueError(f"Output path is not a directory: {output_folder}")
+    if not os.access(output_folder, os.W_OK):
+        raise ValueError(f"Output folder is not writable: {output_folder}")
+    if not os.path.isfile(sweep_path):
+        raise ValueError(f"Sweep file does not exist: {sweep_path}")
+    if not os.access(sweep_path, os.R_OK):
+        raise ValueError(f"Sweep file is not readable: {sweep_path}")
+    if not isinstance(repeats, int) or repeats < 1:
+        raise ValueError(f"Invalid repeats value: {repeats}. Must be a positive integer.")
+    if output_filename and not output_filename.endswith('.wav'):
+        raise ValueError(f"Output filename must end with .wav: {output_filename}")
+    
+    sweep *= volume  # default volume if not overridden externally
 
     if output_channel_mode == "left":
         stereo_sweep = apply_output_panning(sweep, 'left')

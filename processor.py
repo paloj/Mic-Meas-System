@@ -100,7 +100,7 @@ def process_mic_recordings(folder, sweep_path="test_signals/sweep.wav", fs=48000
     anomalies = []
     import glob
 
-    mic_files = sorted(glob.glob(os.path.join(folder, "mic_take_*.wav")))
+    mic_files = sorted(glob.glob(os.path.join(folder, "*.wav")))
     for i, rec_path in enumerate(mic_files, 1):
         recorded, _ = sf.read(rec_path)
         signal = recorded[:, 0] if recorded.ndim > 1 else recorded

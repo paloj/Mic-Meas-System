@@ -1,4 +1,5 @@
 test_mic_recordings/*
 recordings/*
 output/*
+quick_test/*
 __pycache__/*

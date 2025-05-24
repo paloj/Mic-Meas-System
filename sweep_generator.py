@@ -4,13 +4,22 @@ from scipy.signal import chirp
 import soundfile as sf
 import os
 
-
 def generate_log_sweep(filename="sweep.wav", duration=10.0, fs=48000, f_start=20.0, f_end=20000.0):
     """
     Generate a logarithmic sine sweep and save to WAV.
     """
     t = np.linspace(0, duration, int(fs * duration))
     sweep = chirp(t, f_start, t[-1], f_end, method='logarithmic')
+
+    # Apply fade-in/fade-out envelope to avoid pop
+    fade_samples = int(0.01 * fs)  # 10 ms
+    fade_in = np.linspace(0, 1, fade_samples)
+    fade_out = np.linspace(1, 0, fade_samples)
+    sweep[:fade_samples] *= fade_in
+    sweep[-fade_samples:] *= fade_out
+
+    # Remove DC offset
+    sweep -= np.mean(sweep)
 
     # Normalize to -1 to 1 range
     sweep /= np.max(np.abs(sweep))
@@ -19,13 +28,11 @@ def generate_log_sweep(filename="sweep.wav", duration=10.0, fs=48000, f_start=20
     sf.write(filename, sweep, fs)
     print(f"[✓] Logarithmic sine sweep saved as {filename}")
 
-
 def generate_white_noise(filename="white_noise.wav", duration=10.0, fs=48000):
     noise = np.random.normal(0, 0.5, int(duration * fs))
     noise /= np.max(np.abs(noise))
     sf.write(filename, noise, fs)
     print(f"[✓] White noise saved as {filename}")
-
 
 def generate_pink_noise(filename="pink_noise.wav", duration=10.0, fs=48000):
     # Generate pink noise using Voss-McCartney algorithm approximation
@@ -41,7 +48,6 @@ def generate_pink_noise(filename="pink_noise.wav", duration=10.0, fs=48000):
 def generate_silence(filename, duration=3.0, samplerate=48000):
     silence = np.zeros(int(duration * samplerate), dtype=np.float32)
     sf.write(filename, silence, samplerate)
-  
 
 if __name__ == "__main__":
     os.makedirs("test_signals", exist_ok=True)
