@@ -37,6 +37,8 @@ def record_mic_response(output_folder, sweep_path="test_signals/sweep.wav", fs=4
                          input_device=None, output_device=None,
                          input_channel_mode="left", output_channel_mode="left",
                          repeats=3, output_filename=None, output_filename_prefix=None, volume=0.1):
+    # Print volume level
+    print(f"[🎚️] Using volume level: {volume:.2f}")
     # Check for incompatible device host APIs
     in_info = sd.query_devices(input_device)
     out_info = sd.query_devices(output_device)

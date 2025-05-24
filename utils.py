@@ -9,6 +9,24 @@ def smooth_response(magnitude_db, window_bins=5):
     """
     return uniform_filter1d(magnitude_db, size=window_bins)
 
+def smooth_octave(freqs, magnitude_db, fraction=3):
+    """
+    Apply fractional octave smoothing in log-frequency domain.
+    fraction: 1 for 1-octave, 3 for 1/3 octave, etc.
+    """
+    smoothed = np.zeros_like(magnitude_db)
+    for i, f in enumerate(freqs):
+        if f <= 0:
+            smoothed[i] = magnitude_db[i]
+            continue
+        f_low = f / 2 ** (1 / (2 * fraction))
+        f_high = f * 2 ** (1 / (2 * fraction))
+        mask = (freqs >= f_low) & (freqs <= f_high)
+        if np.any(mask):
+            smoothed[i] = np.mean(magnitude_db[mask])
+        else:
+            smoothed[i] = magnitude_db[i]
+    return smoothed
 
 def normalize_response(response_db, reference_db):
     """

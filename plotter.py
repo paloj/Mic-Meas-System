@@ -38,22 +38,40 @@ def plot_frequency_response(freqs, response_db, std_db=None, label="Mic", refere
 
     plt.show()
     
-def plot_multiple_sweeps(freqs_list, responses_list, labels=None, title="Multiple Sweep Responses", save_path=None, smoothing_bins=50, plot_average=True):
-    """
-    Plot individual sweep responses with optional smoothing for clarity.
-    """
-    import matplotlib.pyplot as plt
-    from utils import smooth_response
+from utils import smooth_response, smooth_octave
 
+def plot_multiple_sweeps(freqs_list, responses_list, labels=None, title="Multiple Sweep Responses", save_path=None, 
+                         smoothing_mode="octave", smoothing_bins=5, octave_fraction=3, plot_average=True, discard_first=True):
+    """
+    Plot individual sweep responses with smoothing for clarity.
+    smoothing_mode: "raw", "average", or "octave"
+    """
     plt.figure(figsize=(12, 6))
+    averaged = []
+    if discard_first:
+        freqs_list = freqs_list[1:]
+        responses_list = responses_list[1:]
+        if labels:
+            labels = labels[1:]
+    if labels is None:
+        labels = [f"Sweep {i+1}" for i in range(len(freqs_list))]
+
     for i, (freqs, response) in enumerate(zip(freqs_list, responses_list)):
         label = labels[i] if labels else f"Sweep {i+1}"
-        smoothed = smooth_response(response, window_bins=smoothing_bins)
+
+        if smoothing_mode == "raw":
+            smoothed = response
+        elif smoothing_mode == "octave":
+            smoothed = smooth_octave(freqs, response, fraction=octave_fraction)
+        else:  # fallback to moving average
+            smoothed = smooth_response(response, window_bins=smoothing_bins)
+
         plt.plot(freqs, smoothed, label=label, linewidth=0.8, alpha=0.9)
+        averaged.append(smoothed)
+
     if plot_average:
-        average_response = np.mean([smooth_response(resp, window_bins=smoothing_bins) for resp in responses_list], axis=0)
-        plt.plot(freqs_list[0], average_response, 'k--', label="Average", linewidth=1)
-        
+        avg = np.mean(averaged, axis=0)
+        plt.plot(freqs_list[0], avg, 'k--', label="Average", linewidth=1)
 
     plt.xscale('log')
     plt.xlim(10, 10000)
@@ -68,16 +86,14 @@ def plot_multiple_sweeps(freqs_list, responses_list, labels=None, title="Multipl
     plt.tight_layout()
 
     if save_path:
-        # append timestamp yyyymmdd_hhmmss to the filename
-        timestamp = np.datetime64('now').astype(str).replace('-', '').replace(':', '').replace('T', '_')
+        from numpy import datetime64
+        timestamp = datetime64('now').astype(str).replace('-', '').replace(':', '').replace('T', '_')
         save_path = save_path.replace(".png", f"_{timestamp}.png")        
-        print(f"[✓] Saving individual takes plot to {save_path}")            
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=300)
         print(f"[✓] Saved individual takes plot to {save_path}")
 
     plt.show()
-
 
 
 if __name__ == "__main__":

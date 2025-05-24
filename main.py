@@ -13,6 +13,16 @@ from processor import process_mic_recordings, detect_anomalies
 from plotter import plot_frequency_response
 from device_interface import list_devices_by_hostapi
 
+# Get defaults from config
+config_path = "settings.ini"
+config = configparser.ConfigParser()
+config.read(config_path)
+samplerate = config["audio"].getint("sample_rate", 48000)
+default_volume=config["audio"].getfloat("default_volume", 0.1)
+# Default input/output modes (left/right/stereo) can be overridden in config
+input_mode = config["audio"].get("input_mode", "left").strip().lower()
+output_mode = config["audio"].get("output_mode", "left").strip().lower()
+
 def get_saved_or_prompt_device(key, prompt, config, asio_index):
     try:
         saved = int(config["audio"].get(key, ""))
@@ -27,9 +37,7 @@ def get_saved_or_prompt_device(key, prompt, config, asio_index):
 
 # MAIN MENU
 def menu():
-    config_path = "settings.ini"
-    config = configparser.ConfigParser()
-    config.read(config_path)
+    
     if "processor" not in config:
         config["processor"] = {}
     anomaly_threshold_db = float(config["processor"].get("anomaly_threshold_db", "6"))
@@ -49,6 +57,10 @@ def menu():
     else:
         print("[⚠] ASIO backend not found. Using system default.")
         config["audio"]["backend"] = "WASAPI"
+        
+    # Print default volume and samplerate.
+    print(f"[ℹ] Default volume level: {default_volume:.2f}")
+    print(f"[ℹ] Sample rate: {samplerate} Hz")
 
     while True:
         # build a clean prompt string without leading spaces
@@ -105,9 +117,6 @@ def menu_1_2_record_mic(name, is_reference=False, config=None, asio_index=None, 
     path = os.path.join("recordings", f"{prefix}{name}")
     input_device = get_saved_or_prompt_device("input_device", "Select input device", config, asio_index)
     output_device = get_saved_or_prompt_device("output_device", "Select output device", config, asio_index)
-
-    input_mode = input("Input channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
-    output_mode = input("Output channel mode (left/right/stereo) [left]: ").strip().lower() or "left"
     count = input("Number of sweeps [3]: ").strip()
     try:
         n = int(count)
@@ -117,23 +126,25 @@ def menu_1_2_record_mic(name, is_reference=False, config=None, asio_index=None, 
     # Record ambient noise
     record_mic_response(path,
                         sweep_path="test_signals/silence.wav",
-                        fs=config["audio"].getint("sample_rate", 48000),
+                        fs=samplerate,
                         input_device=input_device,
                         output_device=output_device,
                         input_channel_mode=input_mode,
                         output_channel_mode=output_mode,
                         repeats=1,
-                        output_filename="ambient_noise.wav")
+                        output_filename="ambient_noise.wav",
+                        volume=default_volume)  # Use default volume from config
 
     # Full sweeps
     while True:
         record_mic_response(path,
-                            fs=config["audio"].getint("sample_rate", 48000),
+                            fs=samplerate,
                             input_device=input_device,
                             output_device=output_device,
                             input_channel_mode=input_mode,
                             output_channel_mode=output_mode,
-                            repeats=n)
+                            repeats=n,
+                            volume=default_volume)  # Use default volume from config)
         anomalies_detected = detect_anomalies(name, path, anomaly_threshold_db)
         if not anomalies_detected:
             break
@@ -142,13 +153,14 @@ def menu_1_2_record_mic(name, is_reference=False, config=None, asio_index=None, 
     while True:
         record_mic_response(path,
                             sweep_path="test_signals/sweep_short.wav",
-                            fs=config["audio"].getint("sample_rate", 48000),
+                            fs=samplerate,
                             input_device=input_device,
                             output_device=output_device,
                             input_channel_mode=input_mode,
                             output_channel_mode=output_mode,
                             repeats=n,
-                            output_filename_prefix="short_take_")
+                            output_filename_prefix="short_take_",
+                            volume=default_volume)
         anomalies_detected = detect_anomalies(name + "_short", path, anomaly_threshold_db,
                                               pattern="short_take_*.wav", sweep_path="test_signals/sweep_short.wav")
         if not anomalies_detected:
@@ -173,12 +185,12 @@ def menu_3_generate_signals():
     print("[🎙] Recording white noise (5s)...")
     white, _ = sf.read("test_signals/white_noise.wav")
     white = white[:240000]  # 5s at 48kHz
-    sf.write("test_signals/white_recorded.wav", white, 48000)
+    sf.write("test_signals/white_recorded.wav", white, samplerate)
 
     print("[🎙] Recording pink noise (5s)...")
     pink, _ = sf.read("test_signals/pink_noise.wav")
     pink = pink[:240000]  # 5s at 48kHz
-    sf.write("test_signals/pink_recorded.wav", pink, 48000)
+    sf.write("test_signals/pink_recorded.wav", pink, samplerate)
     
     
 def menu_4_compare_mic_responses(config, asio_index, anomaly_threshold_db, n=None):
@@ -261,8 +273,6 @@ def menu_4_compare_mic_responses(config, asio_index, anomaly_threshold_db, n=Non
     input_device = get_saved_or_prompt_device("input_device", "Select input device", config, asio_index)
     output_device = get_saved_or_prompt_device("output_device", "Select output device", config, asio_index)
 
-    input_mode = "left"  # Default input channel mode
-    output_mode = "left"  # Default output channel mode
     metadata = {
         "version": "v0.9-beta",
         "mic_name": name,
@@ -270,7 +280,7 @@ def menu_4_compare_mic_responses(config, asio_index, anomaly_threshold_db, n=Non
         "reference_mic": ref_name if ref_name else None,
         "output_folder": out_folder,
         "sweep_file": "test_signals/sweep.wav",
-        "sample_rate": 48000,
+        "sample_rate": samplerate,
         "num_sweeps": n if n is not None else "N/A",
         "input_device": sd.query_devices(input_device)["name"] if input_device is not None else None,
         "output_device": sd.query_devices(output_device)["name"] if output_device is not None else None,
@@ -311,8 +321,7 @@ def menu_5_quick_test(config, asio_index, anomaly_threshold_db):
     print("[🎧]Quick test mode selected.")
     input_device = get_saved_or_prompt_device("input_device", "Select input device", config, asio_index)
     output_device = get_saved_or_prompt_device("output_device", "Select output device", config, asio_index)
-    input_mode = config["audio"].get("input_mode", "left").strip().lower()
-    output_mode = config["audio"].get("output_mode", "left").strip().lower()
+
     path = "quick_test"
     os.makedirs(path, exist_ok=True)
     print("[🎧] Playing and recording log sweep (1s) x 3...")
@@ -320,14 +329,14 @@ def menu_5_quick_test(config, asio_index, anomaly_threshold_db):
     record_mic_response(
         output_folder=path,
         sweep_path="test_signals/sweep_short.wav",
-        fs=config["audio"].getint("sample_rate", 48000),
+        fs=samplerate,
         input_device=input_device,
         output_device=output_device,
         input_channel_mode=input_mode,
         output_channel_mode=output_mode,
         repeats=5,
         output_filename_prefix="quick_take_",
-        volume=config["audio"].getfloat("volume", 0.1)  # Use default volume from config
+        volume=default_volume  # Use default volume from config
     )
     # Load and plot each quick_take individually
     from processor import deconvolve, compute_frequency_response
@@ -345,9 +354,14 @@ def menu_5_quick_test(config, asio_index, anomaly_threshold_db):
         freqs_list.append(freqs)
         responses_list.append(mag)
 
-    plot_multiple_sweeps(freqs_list, responses_list, labels=[os.path.basename(f) for f in takes], title="Quick Test - Individual Sweeps", save_path="quick_test/quick_individual_plot.png")
-
-
+    plot_multiple_sweeps(
+        freqs_list, responses_list, 
+        labels=[os.path.basename(f) for f in takes],
+        title="Quick Test - Individual Sweeps",
+        save_path="quick_test/quick_individual_plot.png",
+        smoothing_mode="octave",
+        octave_fraction=3
+    )
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
